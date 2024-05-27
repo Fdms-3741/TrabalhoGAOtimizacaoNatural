@@ -135,7 +135,7 @@ def GerarFuncaoCustoInteiroLimitado(posicoes):
     return FuncaoCusto 
 
 
-def ExecutarSGA(toolbox,params,stats):
+def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
 
     NUMERO_GERACOES = params['N']
     PROBABILIDADE_MUTACAO = params['mupb']
@@ -155,6 +155,9 @@ def ExecutarSGA(toolbox,params,stats):
     for individuo, aptidao in zip(population,aptidoes):
         individuo.fitness.values = aptidao
 
+    record = stats.compile(population)
+    logbook.record(gen=0,evals = len(aptidoes), **record)
+
     for i in range(NUMERO_GERACOES):
         offspring = toolbox.select(population,len(population))
         offspring = map(toolbox.clone,offspring)
@@ -167,7 +170,12 @@ def ExecutarSGA(toolbox,params,stats):
             ind.fitness.values = fit
         
         # Geracional 
-        parents = offspring 
+        population = offspring 
+        
+        # Salvar estatística
+        record = stats.compile(population)
+        logbook.record(gen=0,evals = len(invalid_ind), **record)
+        
 
     return pop, logbook, hof
 
