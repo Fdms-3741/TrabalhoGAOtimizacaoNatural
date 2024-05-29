@@ -156,7 +156,9 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
         individuo.fitness.values = aptidao
 
     record = stats.compile(population)
-    logbook.record(gen=0,evals = len(aptidoes), **record)
+    logbook.record(gen=1,evals = len(population), **record)
+    
+    hof.update(population)
 
     for i in range(NUMERO_GERACOES):
         offspring = toolbox.select(population,len(population))
@@ -174,10 +176,15 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
         
         # Salvar estatística
         record = stats.compile(population)
-        logbook.record(gen=0,evals = len(invalid_ind), **record)
+        logbook.record(gen=i+1,evals = len(invalid_ind), **record)
         
+        # Salva Hall of Fame
+        hof.update(population)
 
-    return pop, logbook, hof
+        if record['success'] == True:
+            break
+        
+    return population, logbook, hof
 
 def SGAPermutacao(posicoes,params):
     # Variáveis necessárias
@@ -209,11 +216,8 @@ def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
     if FuncaoCusto:
         print(f"ValorOtimo: {FuncaoCusto(list(range(params['P'])))}")
     print(f"Melhor indivíduo: {hof[0].fitness.values}")
-    geracaoEncontrada = np.argwhere(np.array(success))
-    if geracaoEncontrada.shape[0] != 0:
-        print(f"Geração encontrada: {geracaoEncontrada[0][0]}")
-    else:
-        print(f"Geração encontrada: -1")
+    geracaoEncontrada = success
+    print(f"Geração encontrada: {geracaoEncontrada}")
 
     fig, ax = plt.subplots()
     ax.plot(gen,avg,label="Média")
@@ -223,20 +227,62 @@ def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
     plt.show()
 
 if __name__ == "__main__":
-    from generate_tsp import GerarProblemaRadialTSP 
+    import pandas as pd 
     import matplotlib.pyplot as plt
-    P = 10
-    posicoes = GerarProblemaRadialTSP(P)
 
-    params = {
-        "P":posicoes.shape[1],
-        "N":1000,
-        "mu":50,
-        "cxpb":0.7,
-        "mupb":0.7,
-        "muidxpb":0.3
-    }
-    
-    Resultados(*SGAInteiroLimitado(posicoes,params))
+    from generate_tsp import GerarProblemaRadialTSP 
+
+    resultados = pd.DataFrame()
+
+    ind = 0
+    for P in [20,30,40]:
+        for popAtual in [40,80,100]:
+            experimentos = []
+            for i in range(10):
+                print(i)
+                posicoes = GerarProblemaRadialTSP(P-1)
+                params = {
+                    "P":posicoes.shape[1],
+                    "N":10000,
+                    "mu":popAtual,
+                    "cxpb":0.7,
+                    "mupb":0.3,
+                    "muidxpb":0.3 
+                }
+                
+                experimento = pd.Series(params)
+                # populacao, logbook, hof, params, funcaoCusto
+                pop, log, hof, _, _ = SGAInteiroLimitado(posicoes,params)
+                experimento["Tipo"] = "Inteiro"
+                experimento["Valor encontrado"] = hof[0].fitness.values[0]
+                experimento["Sucesso"] = log[-1]['success']
+                gen, min, gap = log.select('gen','min','gap')
+                experimento["MBF"] = np.mean(min)
+                experimento['Geração final'] = gen[-1]
+                experimentos.append(experimento)
+                
+                experimento = pd.Series(params)
+                # populacao, logbook, hof, params, funcaoCusto
+                pop, log, hof, _, _ = SGAPermutacao(posicoes,params)
+                experimento["Tipo"] = "Permutação"
+                experimento["Valor encontrado"] = hof[0].fitness.values[0]
+                experimento["Sucesso"] = log[-1]['success']
+                gen, min, gap = log.select('gen','min','gap')
+                experimento["MBF"] = np.mean(min)
+                experimento['Geração final'] = gen[-1]
+                experimentos.append(experimento)
+
+            resultadosAtuais = pd.DataFrame(experimentos)
+            resultadosAtuais.to_pickle(f"3-resultado_parcial_{ind:02d}.pickle")
+            ind += 1
+            resultados = pd.concat([resultados,resultadosAtuais],ignore_index=True)
+            
+            if np.sum(resultadosAtuais[resultadosAtuais['Tipo']=="Inteiro"]["Sucesso"])/resultadosAtuais.shape[0] > 0.6:
+                continue
+
+            if np.sum(resultadosAtuais[resultadosAtuais['Tipo']=="Permutação"]["Sucesso"])/resultadosAtuais.shape[0] > 0.6:
+                continue
 
 
+
+    resultados.to_pickle('3-resultados_geral.pickle')
