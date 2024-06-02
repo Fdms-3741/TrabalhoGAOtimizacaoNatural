@@ -20,9 +20,9 @@ def CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_IND
     # Seleção de indivíudos
     toolbox.register("select",tools.selRoulette)
     # Função de recombinação 
-    toolbox.register('mate',tools.cxTwoPoint)
+    toolbox.register('mate',tools.cxPartialyMatched)
     # Função de mutação
-    toolbox.register('mutate',tools.mutGaussian,mu=0,sigma=1,indpb=PROBABILIDADE_MUTACAO_INDICE)
+    toolbox.register('mutate',tools.mutUniformInt,low=0,up=TAMANHO_INDIVIDUO-1,indpb=PROBABILIDADE_MUTACAO_INDICE)
     # Função de avaliação
     toolbox.register('evaluate',FuncaoCusto)
 
@@ -33,7 +33,7 @@ def CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_IND
                 offspring = func(*args, **kargs)
                 for child in offspring:
                     for i in range(len(child)):
-                        child[i] = np.rint(child[i])%valorMaximo 
+                        child[i] = (np.rint(child[i])%valorMaximo).astype('int64') 
                 return offspring
             return wrapper
         return decorator
@@ -64,7 +64,7 @@ def CriarAlgoritmoSGAPermutacao(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,F
     )
 
     # Operações
-    toolbox.register("select",tools.selTournament,tournsize=5)
+    toolbox.register("select",tools.selRoulette)
     toolbox.register("mate",tools.cxPartialyMatched)
     toolbox.register("mutate",tools.mutShuffleIndexes,indpb=PROBABILIDADE_MUTACAO_INDICE)
     toolbox.register("evaluate",FuncaoCusto)
@@ -159,6 +159,9 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
     logbook.record(gen=1,evals = len(population), **record)
     
     hof.update(population)
+    
+    notChanged = 0
+    lastHof = hof[0].fitness.values[0]
 
     for i in range(NUMERO_GERACOES):
         offspring = toolbox.select(population,len(population))
@@ -180,6 +183,13 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
         
         # Salva Hall of Fame
         hof.update(population)
+        if np.abs(lastHof - hof[0].fitness.values[0]) < 1e-10:
+            notChanged += 1
+            if notChanged == 1000:
+                break 
+        else:
+            notChanged = 0
+            lastHof = hof[0].fitness.values[0]
 
         if record['success'] == True:
             break
@@ -226,63 +236,59 @@ def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
     ax.legend()
     plt.show()
 
+
 if __name__ == "__main__":
     import pandas as pd 
     import matplotlib.pyplot as plt
 
+    import sqlite3
+
     from generate_tsp import GerarProblemaRadialTSP 
+    
+    dbconn = sqlite3.connect("resultados.sqlite")
 
     resultados = pd.DataFrame()
 
-    ind = 0
-    for P in [20,30,40]:
-        for popAtual in [40,80,100]:
-            experimentos = []
-            for i in range(10):
-                print(i)
-                posicoes = GerarProblemaRadialTSP(P-1)
-                params = {
-                    "P":posicoes.shape[1],
-                    "N":10000,
-                    "mu":popAtual,
-                    "cxpb":0.7,
-                    "mupb":0.3,
-                    "muidxpb":0.3 
-                }
-                
-                experimento = pd.Series(params)
-                # populacao, logbook, hof, params, funcaoCusto
-                pop, log, hof, _, _ = SGAInteiroLimitado(posicoes,params)
-                experimento["Tipo"] = "Inteiro"
-                experimento["Valor encontrado"] = hof[0].fitness.values[0]
-                experimento["Sucesso"] = log[-1]['success']
-                gen, min, gap = log.select('gen','min','gap')
-                experimento["MBF"] = np.mean(min)
-                experimento['Geração final'] = gen[-1]
-                experimentos.append(experimento)
-                
-                experimento = pd.Series(params)
-                # populacao, logbook, hof, params, funcaoCusto
-                pop, log, hof, _, _ = SGAPermutacao(posicoes,params)
-                experimento["Tipo"] = "Permutação"
-                experimento["Valor encontrado"] = hof[0].fitness.values[0]
-                experimento["Sucesso"] = log[-1]['success']
-                gen, min, gap = log.select('gen','min','gap')
-                experimento["MBF"] = np.mean(min)
-                experimento['Geração final'] = gen[-1]
-                experimentos.append(experimento)
+    for tipoProblema in ["Normal","Reverso"]:
+        for P in [20,30]:
+            for popAtual in [100,200,500,1000]:
+                for i in range(20):
+                    print(i)
+                    posicoes = GerarProblemaRadialTSP(P-1)
+                    if tipoProblema == "Reverso":
+                        posicoes = np.flip(posicoes,axis=1)
+                    params = {
+                        "Problema":tipoProblema,
+                        "P":posicoes.shape[1],
+                        "N":3000,
+                        "mu":popAtual,
+                        "cxpb":0.7,
+                        "mupb":0.7,
+                        "muidxpb":0.3 
+                    }
+                    
+                    expInteiro = pd.Series(params)
+                    # populacao, logbook, hof, params, funcaoCusto
+                    pop, log, hof, _, _ = SGAInteiroLimitado(posicoes,params)
+                    expInteiro["Tipo"] = "Inteiro"
+                    expInteiro["Valor encontrado"] = hof[0].fitness.values[0]
+                    expInteiro["Sucesso"] = log[-1]['success']
+                    gen, min, gap = log.select('gen','min','gap')
+                    expInteiro["MBF"] = np.mean(min)
+                    expInteiro['Geração final'] = gen[-1]
+                    
+                    
+                    expPerm = pd.Series(params)
+                    # populacao, logbook, hof, params, funcaoCusto
+                    pop, log, hof, _, _ = SGAPermutacao(posicoes,params)
+                    expPerm["Tipo"] = "Permutação"
+                    expPerm["Valor encontrado"] = hof[0].fitness.values[0]
+                    expPerm["Sucesso"] = log[-1]['success']
+                    gen, min, gap = log.select('gen','min','gap')
+                    expPerm["MBF"] = np.mean(min)
+                    expPerm['Geração final'] = gen[-1]
+                    
+                    experimento = pd.DataFrame([expInteiro,expPerm])
+                    experimento.to_sql('resultados',dbconn,if_exists='append')
+                    
 
-            resultadosAtuais = pd.DataFrame(experimentos)
-            resultadosAtuais.to_pickle(f"3-resultado_parcial_{ind:02d}.pickle")
-            ind += 1
-            resultados = pd.concat([resultados,resultadosAtuais],ignore_index=True)
-            
-            if np.sum(resultadosAtuais[resultadosAtuais['Tipo']=="Inteiro"]["Sucesso"])/resultadosAtuais.shape[0] > 0.6:
-                continue
-
-            if np.sum(resultadosAtuais[resultadosAtuais['Tipo']=="Permutação"]["Sucesso"])/resultadosAtuais.shape[0] > 0.6:
-                continue
-
-
-
-    resultados.to_pickle('3-resultados_geral.pickle')
