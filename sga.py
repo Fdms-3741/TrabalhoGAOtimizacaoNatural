@@ -18,7 +18,7 @@ def CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_IND
     toolbox.register("population",tools.initRepeat,creator.individual,toolbox.individual)
 
     # Seleção de indivíudos
-    toolbox.register("select",tools.selRoulette)
+    toolbox.register("select",tools.selTournament,tournsize=5)
     # Função de recombinação 
     toolbox.register('mate',tools.cxPartialyMatched)
     # Função de mutação
@@ -65,7 +65,7 @@ def CriarAlgoritmoSGAPermutacao(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,F
     )
 
     # Operações
-    toolbox.register("select",tools.selRoulette)
+    toolbox.register("select",tools.selTournament,tournsize=5)
     toolbox.register("mate",tools.cxPartialyMatched)
     # Mudar a cidade 
     toolbox.register("mutate",tools.mutShuffleIndexes,indpb=PROBABILIDADE_MUTACAO_INDICE)
@@ -151,6 +151,8 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
     population = toolbox.population(n=TAMANHO_POPULACAO)
     # Cria os logs
     logbook = tools.Logbook()
+    
+#    __import__('pdb').set_trace()
 
     # Avaliação inicial
     aptidoes = map(toolbox.evaluate,population)
@@ -171,17 +173,20 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
         offspring = algorithms.varAnd(population,toolbox,PROBABILIDADE_RECOMBINACAO,PROBABILIDADE_MUTACAO)
 
         # Evaluate the individuals with an invalid fitness
-        invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
-        fitnesses = map(toolbox.evaluate, invalid_ind)
-        for ind, fit in zip(invalid_ind, fitnesses):
-            ind.fitness.values = fit
-        
+        #invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+        #fitnesses = map(toolbox.evaluate, invalid_ind)
+        #for ind, fit in zip(invalid_ind, fitnesses):
+        #    ind.fitness.values = fit
+        # Avaliação inicial
+        aptidoes = map(toolbox.evaluate,offspring)
+        for individuo, aptidao in zip(offspring,aptidoes):
+            individuo.fitness.values = aptidao
         # Geracional 
         population = offspring 
         
         # Salvar estatística
         record = stats.compile(population)
-        logbook.record(gen=i+1,evals = len(invalid_ind), **record)
+        logbook.record(gen=i+1,evals = len(population), **record)
         
         # Salva Hall of Fame
         hof.update(population)
@@ -205,9 +210,12 @@ def SGAPermutacao(posicoes,params):
     
     # Define os valores para o algoritmo SGA
     FuncaoCusto = GerarFuncaoCustoPermutacao(posicoes)
-    toolbox = CriarAlgoritmoSGAPermutacao(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,FuncaoCusto)
+    toolbox = CriarAlgoritmoSGAPermutacao(params['P'],params['muidxpb'],FuncaoCusto)
+    pop = toolbox.population(params['mu'])
+    hof = tools.HallOfFame(1)
     stats = CriarEstatistica(valorOtimo=FuncaoCusto(list(range(TAMANHO_INDIVIDUO)))[0])
-    return (*ExecutarSGA(toolbox,params,stats),params,FuncaoCusto)
+    pop,log  = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],stats=stats,verbose=False,halloffame=hof)
+    return (pop,log,hof,params,FuncaoCusto)
 
 def SGAInteiroLimitado(posicoes,params):
 
@@ -217,8 +225,11 @@ def SGAInteiroLimitado(posicoes,params):
     # Define os valores para o algoritmo SGA
     FuncaoCusto = GerarFuncaoCustoInteiroLimitado(posicoes)
     toolbox = CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,FuncaoCusto)
+    pop = toolbox.population(params['mu'])
+    hof = tools.HallOfFame(1)
     stats = CriarEstatistica(valorOtimo=FuncaoCusto(list(range(TAMANHO_INDIVIDUO)))[0])
-    return (*ExecutarSGA(toolbox,params,stats),params,FuncaoCusto)
+    pop,log  = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],stats=stats,verbose=False,halloffame=hof)
+    return (pop,log,hof,params,FuncaoCusto)
 
 
 def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
@@ -247,50 +258,38 @@ if __name__ == "__main__":
 
     from generate_tsp import GerarProblemaRadialTSP 
     
-    dbconn = sqlite3.connect("resultados.sqlite")
 
-    resultados = pd.DataFrame()
+    for cidades in [40]:
+        print(f"Cidades={cidades}")
+        posicoes = GerarProblemaRadialTSP(cidades)
+        params = {
+            "Problema":"teste",
+            "P":posicoes.shape[1],
+            "N":300,
+            "mu":100,
+            "cxpb":0.3,
+            "mupb":0.1,
+            "muidxpb":0.01 
+        }
 
-    for tipoProblema in ["Normal","Reverso"]:
-        for P in [20,30]:
-            for popAtual in [100,200,500,1000]:
-                for i in range(20):
-                    print(i)
-                    posicoes = GerarProblemaRadialTSP(P-1)
-                    if tipoProblema == "Reverso":
-                        posicoes = np.flip(posicoes,axis=1)
-                    params = {
-                        "Problema":tipoProblema,
-                        "P":posicoes.shape[1],
-                        "N":3000,
-                        "mu":popAtual,
-                        "cxpb":0.7,
-                        "mupb":0.7,
-                        "muidxpb":0.3 
-                    }
-                    
-                    expInteiro = pd.Series(params)
-                    # populacao, logbook, hof, params, funcaoCusto
-                    pop, log, hof, _, _ = SGAInteiroLimitado(posicoes,params)
-                    expInteiro["Tipo"] = "Inteiro"
-                    expInteiro["Valor encontrado"] = hof[0].fitness.values[0]
-                    expInteiro["Sucesso"] = log[-1]['success']
-                    gen, min, gap = log.select('gen','min','gap')
-                    expInteiro["MBF"] = np.mean(min)
-                    expInteiro['Geração final'] = gen[-1]
-                    
-                    
-                    expPerm = pd.Series(params)
-                    # populacao, logbook, hof, params, funcaoCusto
-                    pop, log, hof, _, _ = SGAPermutacao(posicoes,params)
-                    expPerm["Tipo"] = "Permutação"
-                    expPerm["Valor encontrado"] = hof[0].fitness.values[0]
-                    expPerm["Sucesso"] = log[-1]['success']
-                    gen, min, gap = log.select('gen','min','gap')
-                    expPerm["MBF"] = np.mean(min)
-                    expPerm['Geração final'] = gen[-1]
-                    
-                    experimento = pd.DataFrame([expInteiro,expPerm])
-                    experimento.to_sql('resultados',dbconn,if_exists='append')
-                    
+        print("SGA Permutação")
+        pop, log, hof, params, cost = SGAPermutacao(posicoes,params)
+        print(f"Feito SGA custom: hof={hof[0].fitness.values}")
+        FuncaoCusto = GerarFuncaoCustoPermutacao(posicoes)
+        toolbox = CriarAlgoritmoSGAPermutacao(params['P'],params['muidxpb'],FuncaoCusto)
+        pop = toolbox.population(params['mu'])
+        hof = tools.HallOfFame(1)
+        pop = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],verbose=False,halloffame=hof)
+        print(f"Feito SGA padrão: hof={hof[0].fitness.values}")
+        
+
+        print("SGA Inteiro")
+        pop, log, hof, params, cost = SGAInteiroLimitado(posicoes,params)
+        print(f"Feito SGA Custom: hof={hof[0].fitness.values}")
+        FuncaoCusto = GerarFuncaoCustoInteiroLimitado(posicoes)
+        toolbox = CriarAlgoritmoSGAInteiroLimitado(params['P'],params['muidxpb'],FuncaoCusto)
+        pop = toolbox.population(params['mu'])
+        hof = tools.HallOfFame(1)
+        pop = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],verbose=False,halloffame=hof)
+        print(f"Feito SGA padrão: hof={hof[0].fitness.values}")
 
