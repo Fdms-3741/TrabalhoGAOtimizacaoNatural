@@ -37,6 +37,7 @@ def CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_IND
                 return offspring
             return wrapper
         return decorator
+
     toolbox.decorate('mutate',CorrecaoInteirosFronteira(TAMANHO_INDIVIDUO))
     
     return toolbox 
@@ -66,6 +67,7 @@ def CriarAlgoritmoSGAPermutacao(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,F
     # Operações
     toolbox.register("select",tools.selRoulette)
     toolbox.register("mate",tools.cxPartialyMatched)
+    # Mudar a cidade 
     toolbox.register("mutate",tools.mutShuffleIndexes,indpb=PROBABILIDADE_MUTACAO_INDICE)
     toolbox.register("evaluate",FuncaoCusto)
     return toolbox 
@@ -77,12 +79,12 @@ def CriarEstatistica(valorOtimo=None):
     stats.register("min",np.min)
     stats.register("std",np.std)
     if valorOtimo:
-        stats.register("success",lambda x: np.abs(np.min(x)-valorOtimo)<1e-10)
-        stats.register("min_gap",lambda x: valorOtimo/np.min(x))
+        stats.register("success",lambda x: valorOtimo/np.min(x) > 0.9)
+        stats.register("gap",lambda x: valorOtimo/np.min(x))
     return stats 
 
 def CriarHallDaFama():
-    hof = tools.HallOfFame(1)
+    hof = tools.HallOfFame(5)
     return hof
 
 def GerarFuncaoCustoPermutacao(posicoes):
