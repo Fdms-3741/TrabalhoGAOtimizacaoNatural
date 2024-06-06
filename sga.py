@@ -1,3 +1,4 @@
+import array 
 import random 
 
 import numpy as np
@@ -5,20 +6,21 @@ from deap import creator, base, tools, algorithms
 
 # Definição da função de aptidão e dos tipos dos invidívuos
 creator.create("FitnessMin",base.Fitness,weights=(-1.0,)) # Minimiza
-creator.create("individual",list,fitness=creator.FitnessMin)
+creator.create("individual",array.array,typecode='i',fitness=creator.FitnessMin)
 
 def CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,FuncaoCusto):
 
     toolbox = base.Toolbox()
     # Atributo do indivíduo
     toolbox.register("atributo",random.randint,0,TAMANHO_INDIVIDUO-1)
+    ##toolbox.register("atributo", random.sample, range(IND_SIZE), IND_SIZE)
     # Indivíduo
     toolbox.register("individual",tools.initRepeat,creator.individual,toolbox.atributo,n=TAMANHO_INDIVIDUO)
     # População 
-    toolbox.register("population",tools.initRepeat,creator.individual,toolbox.individual)
+    toolbox.register("population",tools.initRepeat,list,toolbox.individual)
 
     # Seleção de indivíudos
-    toolbox.register("select",tools.selTournament,tournsize=5)
+    toolbox.register("select",tools.selTournament,tournsize=3)
     # Função de recombinação 
     toolbox.register('mate',tools.cxPartialyMatched)
     # Função de mutação
@@ -26,19 +28,18 @@ def CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_IND
     # Função de avaliação
     toolbox.register('evaluate',FuncaoCusto)
 
-    # Correção dos valores para inteiros delimitados entre 0 e TAMANHO_INDIVIDUO-1
-    def CorrecaoInteirosFronteira(valorMaximo):
-        def decorator(func):
-            def wrapper(*args, **kargs):
-                offspring = func(*args, **kargs)
-                for child in offspring:
-                    for i in range(len(child)):
-                        child[i] = (np.rint(child[i])%valorMaximo).astype('int64') 
-                return offspring
-            return wrapper
-        return decorator
+#    def CorrecaoInteirosFronteira(valorMaximo):
+#        def decorator(func):
+#            def wrapper(*args, **kargs):
+#                offspring = func(*args, **kargs)
+#                for child in offspring:
+#                    for i in range(len(child)):
+#                        child[i] = (np.rint(child[i])%valorMaximo).astype('int64') 
+#                return offspring
+#            return wrapper
+#        return decorator
 
-    toolbox.decorate('mutate',CorrecaoInteirosFronteira(TAMANHO_INDIVIDUO))
+#    toolbox.decorate('mutate',CorrecaoInteirosFronteira(TAMANHO_INDIVIDUO))
     
     return toolbox 
 
@@ -60,12 +61,12 @@ def CriarAlgoritmoSGAPermutacao(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,F
     toolbox.register(
         "population",
         tools.initRepeat, # Função que inicializa uma população repetindo chamadas a uma função
-        creator.individual, # Tipo na qual a população será inserida 
+        list, # Tipo na qual a população será inserida 
         toolbox.individual # Função a ser chamada varias vezes
     )
 
     # Operações
-    toolbox.register("select",tools.selTournament,tournsize=5)
+    toolbox.register("select",tools.selTournament,tournsize=3)
     toolbox.register("mate",tools.cxPartialyMatched)
     # Mudar a cidade 
     toolbox.register("mutate",tools.mutShuffleIndexes,indpb=PROBABILIDADE_MUTACAO_INDICE)
@@ -78,8 +79,10 @@ def CriarEstatistica(valorOtimo=None):
     stats.register("mean",np.mean)
     stats.register("min",np.min)
     stats.register("std",np.std)
+    stats.register("pop",lambda x: x)
     if valorOtimo:
         stats.register("success",lambda x: valorOtimo/np.min(x) > 0.9)
+        stats.register("optimal success",lambda x: np.abs(valorOtimo-np.min(x))<1e-8)
         stats.register("gap",lambda x: valorOtimo/np.min(x))
     return stats 
 
@@ -203,7 +206,7 @@ def ExecutarSGA(toolbox,params,stats:tools.Statistics ):
         
     return population, logbook, hof
 
-def SGAPermutacao(posicoes,params):
+def SGAPermutacao(posicoes,params,vetorOtimo=None):
     # Variáveis necessárias
     TAMANHO_INDIVIDUO = posicoes.shape[1]
     PROBABILIDADE_MUTACAO_INDICE = params['muidxpb']
@@ -213,11 +216,11 @@ def SGAPermutacao(posicoes,params):
     toolbox = CriarAlgoritmoSGAPermutacao(params['P'],params['muidxpb'],FuncaoCusto)
     pop = toolbox.population(params['mu'])
     hof = tools.HallOfFame(1)
-    stats = CriarEstatistica(valorOtimo=FuncaoCusto(list(range(TAMANHO_INDIVIDUO)))[0])
+    stats = CriarEstatistica(valorOtimo=FuncaoCusto(vetorOtimo)[0] if not vetorOtimo is None else None)
     pop,log  = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],stats=stats,verbose=False,halloffame=hof)
     return (pop,log,hof,params,FuncaoCusto)
 
-def SGAInteiroLimitado(posicoes,params):
+def SGAInteiroLimitado(posicoes,params,vetorOtimo=None):
 
     TAMANHO_INDIVIDUO = posicoes.shape[1]
     PROBABILIDADE_MUTACAO_INDICE = params['muidxpb']
@@ -227,20 +230,18 @@ def SGAInteiroLimitado(posicoes,params):
     toolbox = CriarAlgoritmoSGAInteiroLimitado(TAMANHO_INDIVIDUO,PROBABILIDADE_MUTACAO_INDICE,FuncaoCusto)
     pop = toolbox.population(params['mu'])
     hof = tools.HallOfFame(1)
-    stats = CriarEstatistica(valorOtimo=FuncaoCusto(list(range(TAMANHO_INDIVIDUO)))[0])
+    stats = CriarEstatistica(valorOtimo=FuncaoCusto(vetorOtimo)[0] if not vetorOtimo is None else None)
     pop,log  = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],stats=stats,verbose=False,halloffame=hof)
     return (pop,log,hof,params,FuncaoCusto)
 
 
 def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
      
-    gen, avg, min, success, gap = logbook.select('gen','mean','min','success','gap')
+    gen, avg, min, success, gap, pop = logbook.select('gen','mean','min','success','gap','pop')
     
-    if FuncaoCusto:
-        print(f"ValorOtimo: {FuncaoCusto(list(range(params['P'])))}")
     print(f"Melhor indivíduo: {hof[0].fitness.values}")
     geracaoEncontrada = success
-    print(f"Geração encontrada: {geracaoEncontrada}")
+    print(f"Geração encontrada: {geracaoEncontrada[-1]}")
 
     fig, ax = plt.subplots()
     ax.plot(gen,avg,label="Média")
@@ -249,6 +250,10 @@ def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
     ax.legend()
     plt.show()
 
+    print(np.array(pop).shape)
+    for i in range(np.array(pop).shape[1]):
+        plt.plot(gen,np.array(pop)[:,i,0])
+    plt.show()
 
 if __name__ == "__main__":
     import pandas as pd 
@@ -265,31 +270,25 @@ if __name__ == "__main__":
         params = {
             "Problema":"teste",
             "P":posicoes.shape[1],
-            "N":300,
-            "mu":100,
-            "cxpb":0.3,
-            "mupb":0.1,
+            "N":1000,
+            "mu":50,
+            "cxpb":0.7,
+            "mupb":0.3,
             "muidxpb":0.01 
         }
-
-        print("SGA Permutação")
-        pop, log, hof, params, cost = SGAPermutacao(posicoes,params)
-        print(f"Feito SGA custom: hof={hof[0].fitness.values}")
-        FuncaoCusto = GerarFuncaoCustoPermutacao(posicoes)
-        toolbox = CriarAlgoritmoSGAPermutacao(params['P'],params['muidxpb'],FuncaoCusto)
-        pop = toolbox.population(params['mu'])
-        hof = tools.HallOfFame(1)
-        pop = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],verbose=False,halloffame=hof)
-        print(f"Feito SGA padrão: hof={hof[0].fitness.values}")
         
+        print("SGA Permutação")
+        #for i in range (3):
+        #    pop, log, hof, params, cost = SGAPermutacao(posicoes,params)
+        #    print(f"Feito SGA: hof={hof[0].fitness.values}")
+            
 
         print("SGA Inteiro")
-        pop, log, hof, params, cost = SGAInteiroLimitado(posicoes,params)
-        print(f"Feito SGA Custom: hof={hof[0].fitness.values}")
-        FuncaoCusto = GerarFuncaoCustoInteiroLimitado(posicoes)
-        toolbox = CriarAlgoritmoSGAInteiroLimitado(params['P'],params['muidxpb'],FuncaoCusto)
-        pop = toolbox.population(params['mu'])
-        hof = tools.HallOfFame(1)
-        pop = algorithms.eaSimple(pop,toolbox,params['cxpb'],params['mupb'],params['N'],verbose=False,halloffame=hof)
-        print(f"Feito SGA padrão: hof={hof[0].fitness.values}")
+        #for i in range (3):
+        #    pop, log, hof, params, cost = SGAInteiroLimitado(posicoes,params)
+        #    print(f"Feito SGA: hof={hof[0].fitness.values}")
+        #    print(f"Feito SGA: hof={np.unique(np.array(hof))}")
 
+        Resultados(*SGAPermutacao(posicoes,params))
+        Resultados(*SGAInteiroLimitado(posicoes,params))
+        
