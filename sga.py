@@ -246,14 +246,21 @@ def Resultados(pop, logbook, hof, params, FuncaoCusto=None):
     fig, ax = plt.subplots()
     ax.plot(gen,avg,label="Média")
     ax.plot(gen,min,label="Menor")
-    ax.plot(gen,success,label="Sucesso")
     ax.legend()
-    plt.show()
+    ax.set_title("Progressão estatística da população") 
+    ax.set_xlabel("Gerações")
+    ax.set_ylabel("Valor")
+    plt.savefig("Estatística.png")
+
+
 
     print(np.array(pop).shape)
     for i in range(np.array(pop).shape[1]):
         plt.plot(gen,np.array(pop)[:,i,0])
-    plt.show()
+    plt.title("Aptidão dos indivíduos") 
+    plt.xlabel("Gerações")
+    plt.ylabel("Valor")
+    plt.savefig("Indivídual.png")
 
 if __name__ == "__main__":
     import pandas as pd 
@@ -277,7 +284,7 @@ if __name__ == "__main__":
             "muidxpb":0.01 
         }
         
-        print("SGA Permutação")
+        #print("SGA Permutação")
         #for i in range (3):
         #    pop, log, hof, params, cost = SGAPermutacao(posicoes,params)
         #    print(f"Feito SGA: hof={hof[0].fitness.values}")
@@ -289,6 +296,6 @@ if __name__ == "__main__":
         #    print(f"Feito SGA: hof={hof[0].fitness.values}")
         #    print(f"Feito SGA: hof={np.unique(np.array(hof))}")
 
-        Resultados(*SGAPermutacao(posicoes,params))
+        #Resultados(*SGAPermutacao(posicoes,params))
         Resultados(*SGAInteiroLimitado(posicoes,params))
         
